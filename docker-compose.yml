@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: rag_chatbot
+    depends_on:
+      - qdrant
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      # Add other env vars as needed, or use .env file
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/RAG
+    restart: unless-stopped
+    command: ["streamlit", "run", "main1.py", "--server.port=8501", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+
+volumes:
+  qdrant_data:

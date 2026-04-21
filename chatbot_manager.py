@@ -8,6 +8,9 @@ from langchain.schema import Document
 from database_manager import DatabaseManager
 from docx import Document as DocxDocument
 from langchain_community.document_loaders import CSVLoader, UnstructuredExcelLoader
+from llama_index.core import SimpleDirectoryReader, ServiceContext
+from llama_index.core.node_parser import SimpleNodeParser
+from langchain_community.embeddings import OllamaEmbeddings
 
 class ChatbotManager:
     def __init__(
@@ -50,43 +53,22 @@ class ChatbotManager:
 
     
     def load_and_split_documents(self):
-        documents = []
-        print("loading and splitting documents")
+        print("Loading and splitting using LlamaParse-compatible reader...")
+        
+        # Load documents (supports .csv, .xlsx, .txt, etc.)
+        reader = SimpleDirectoryReader(input_dir=self.folder_path)
+        documents = reader.load_data()
 
-        # Check if input is a file or a directory
-        if os.path.isfile(self.folder_path):
-            filenames = [os.path.basename(self.folder_path)]
-            folder = os.path.dirname(self.folder_path)
-        else:
-            filenames = os.listdir(self.folder_path)
-            folder = self.folder_path
+        # Embed model
+        embed_model = OllamaEmbeddings(model="nomic-embed-text")
+        self.service_context = ServiceContext.from_defaults(embed_model=embed_model)
 
-        for filename in filenames:
-            full_path = os.path.join(folder, filename)
-
-            if filename.endswith('.pdf'):
-                loader = PyPDFLoader(full_path)
-                documents.extend(loader.load())
-
-            elif filename.endswith('.docx'):
-                doc = DocxDocument(full_path)
-                texts = [para.text for para in doc.paragraphs if para.text.strip()]
-                documents.extend([Document(page_content=text) for text in texts])
-
-            elif filename.endswith('.csv'):
-                print(f"Loading CSV file: {filename}")
-                loader = CSVLoader(file_path=full_path)
-                csv_data = loader.load()
-                #print("CSV Data Sample:", csv_data[:1])
-                documents.extend(csv_data)
-
-            elif filename.endswith('.xlsx') or filename.endswith('.xls'):
-                print(f"Loading Excel file: {filename}")
-                loader = UnstructuredExcelLoader(file_path=full_path)
-                documents.extend(loader.load())
-
-            else:
-                print(f"Unsupported file format: {filename}")
+        # Split using LlamaIndex's parser
+        parser = SimpleNodeParser()
+        nodes = parser.get_nodes_from_documents(documents)
+        
+        print(f"Adding {len(nodes)} nodes to the vector store...")
+        self.db_manager.get_db().add_documents(nodes)
 
         # Now split the documents
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
